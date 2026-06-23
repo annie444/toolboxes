@@ -3,19 +3,6 @@ FROM registry.fedoraproject.org/fedora-toolbox:${FEDORA_VERSION}
 ARG FEDORA_VERSION=44
 ENV FEDORA_VERSION=${FEDORA_VERSION}
 
-LABEL com.github.containers.toolbox="true" \
-      org.opencontainers.image.source="https://github.com/annie444/toolbox" \
-      org.opencontainers.image.url="https://github.com/annie444/toolbox/pkgs/container/linux-toolbox" \
-      org.label-schema.url="https://github.com/annie444/toolbox" \
-      org.opencontainers.image.documentation="https://github.com/annie444/toolbox?tab=readme-ov-file" \
-      org.label-schema.usage="https://github.com/annie444/toolbox?tab=readme-ov-file" \
-      org.opencontainers.image.title="Fedora Linux toolbox" \
-      org.label-schema.name="Fedora Linux toolbox" \
-      org.opencontainers.image.description="Fedora toolbox with fish + neovim for Linux utility development" \
-      org.label-schema.description="Fedora toolbox with fish + neovim for Linux utility development" \
-      org.opencontainers.image.base.name="registry.fedoraproject.org/fedora-toolbox:${FEDORA_VERSION}"
-
-
 COPY <<ETCDNF /etc/dnf/dnf.conf
 # see `man dnf.conf` for defaults and possible options
 
@@ -86,6 +73,23 @@ RUN curl --proto '=https' --tlsv1.2 -LsSf https://claude.ai/install.sh \
       && claude_version=$(ls /usr/local/share/claude/versions/ | sort --version-sort | tail -n 1) \
       && ln -s "/usr/local/share/claude/versions/$claude_version" /usr/local/bin/claude
 
+COPY <<NVIMOPTS /root/.config/nvim/lua/options.lua
+vim.g.clipboard = {
+  name = 'OSC 52',
+  copy = {
+    ['+'] = require('vim.ui.clipboard.osc52').copy('+'),
+    ['*'] = require('vim.ui.clipboard.osc52').copy('*'),
+  },
+  paste = {
+    ['+'] = require('vim.ui.clipboard.osc52').paste('+'),
+    ['*'] = require('vim.ui.clipboard.osc52').paste('*'),
+  },
+}
+
+vim.opt.clipboard = 'unnamedplus'
+
+NVIMOPTS
+
 RUN mkdir -p /root/.config/nvim/lua \
  && source /root/.venv/bin/activate \
  && pip install --upgrade pip \
@@ -131,10 +135,6 @@ if not string match -q -- "$PNPM_HOME/bin" $PATH
   set -gx PATH "$PNPM_HOME/bin" $PATH
 end
 PNPM
-
-COPY <<VENV /etc/fish/conf.d/99-venv.fish
-source /root/.venv/bin/activate.fish
-VENV
 
 VOLUME /usr/local/cargo/registry \
        /build/target \

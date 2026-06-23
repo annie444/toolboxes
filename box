@@ -152,6 +152,7 @@ declare -a other=(
     "--replace"
     "--hostname=$NAME"
     "--network=host"
+    "--pull=newer"
 )
 
 $CONTAINER_EXECUTABLE run "${other[@]}" "${mounts[@]}" "${volumes[@]}" "${envs[@]}" "$REGISTRY/$NS/$NAME:$TAG" "$@"
