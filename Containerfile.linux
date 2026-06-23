@@ -4,7 +4,8 @@ ARG FEDORA_VERSION=44
 ENV FEDORA_VERSION=${FEDORA_VERSION}
 
 LABEL com.github.containers.toolbox="true" \
-      org.opencontainers.image.url="https://github.com/annie444/toolbox" \
+      org.opencontainers.image.source="https://github.com/annie444/toolbox" \
+      org.opencontainers.image.url="https://github.com/annie444/toolbox/pkgs/container/linux-toolbox" \
       org.label-schema.url="https://github.com/annie444/toolbox" \
       org.opencontainers.image.documentation="https://github.com/annie444/toolbox?tab=readme-ov-file" \
       org.label-schema.usage="https://github.com/annie444/toolbox?tab=readme-ov-file" \
@@ -13,6 +14,7 @@ LABEL com.github.containers.toolbox="true" \
       org.opencontainers.image.description="Fedora toolbox with fish + neovim for Linux utility development" \
       org.label-schema.description="Fedora toolbox with fish + neovim for Linux utility development" \
       org.opencontainers.image.base.name="registry.fedoraproject.org/fedora-toolbox:${FEDORA_VERSION}"
+
 
 COPY <<ETCDNF /etc/dnf/dnf.conf
 # see `man dnf.conf` for defaults and possible options
