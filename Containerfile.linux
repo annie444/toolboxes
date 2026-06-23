@@ -28,9 +28,9 @@ RUN --mount=type=bind,source=linux/,destination=/tmp/pkgs/ \
 RUN curl --proto '=https' --tlsv1.2 -LsSf https://starship.rs/install.sh \
       | sh -s -- --yes --bin-dir /usr/local/bin
 
-ENV RUSTUP_HOME=/usr/local/rustup \
-    CARGO_HOME=/usr/local/cargo \
-    PATH=/usr/local/cargo/bin:$PATH \
+ENV RUSTUP_HOME=/usr/local/share/rustup \
+    CARGO_HOME=/usr/local/share/cargo \
+    PATH=/usr/local/share/cargo/bin:$PATH \
     CARGO_TARGET_DIR=/build/target
 
 RUN mkdir -p "$CARGO_TARGET_DIR" \
