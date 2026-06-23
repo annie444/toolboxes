@@ -1,0 +1,155 @@
+ARG FEDORA_VERSION=44
+FROM registry.fedoraproject.org/fedora-toolbox:${FEDORA_VERSION}
+ARG FEDORA_VERSION=44
+ENV FEDORA_VERSION=${FEDORA_VERSION}
+
+LABEL com.github.containers.toolbox="true" \
+      org.opencontainers.image.url="https://github.com/annie444/toolbox" \
+      org.label-schema.url="https://github.com/annie444/toolbox" \
+      org.opencontainers.image.documentation="https://github.com/annie444/toolbox?tab=readme-ov-file" \
+      org.label-schema.usage="https://github.com/annie444/toolbox?tab=readme-ov-file" \
+      org.opencontainers.image.title="Fedora Linux toolbox" \
+      org.label-schema.name="Fedora Linux toolbox" \
+      org.opencontainers.image.description="Fedora toolbox with fish + neovim for Linux utility development" \
+      org.label-schema.description="Fedora toolbox with fish + neovim for Linux utility development" \
+      org.opencontainers.image.base.name="registry.fedoraproject.org/fedora-toolbox:${FEDORA_VERSION}"
+
+COPY <<ETCDNF /etc/dnf/dnf.conf
+# see `man dnf.conf` for defaults and possible options
+
+[main]
+install_weak_deps=False
+max_parallel_downloads=10
+ETCDNF
+
+RUN --mount=type=bind,source=linux/,destination=/tmp/pkgs/ \
+    dnf5 -y install dnf-plugins-core dnf5-plugins \
+ && dnf5 -y config-manager setopt fedora-cisco-openh264.enabled=1 \
+ && dnf5 -y install https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-${FEDORA_VERSION}.noarch.rpm \
+                    https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-${FEDORA_VERSION}.noarch.rpm \
+ && dnf5 -y copr enable dejan/lazygit \
+ && dnf5 -y copr enable awood/bat-extras \
+ && dnf5 -y config-manager addrepo --from-repofile=https://cli.github.com/packages/rpm/gh-cli.repo \
+ && dnf5 -y upgrade --refresh \
+ && dnf5 -y install $(cat "/tmp/pkgs/pkgs-$(arch).txt") \
+ && dnf5 -y clean all \
+ && rm -rf /var/cache/dnf/* \
+ && rm -rf /var/cache/libdnf5/*
+
+RUN curl --proto '=https' --tlsv1.2 -LsSf https://starship.rs/install.sh \
+      | sh -s -- --yes --bin-dir /usr/local/bin
+
+ENV RUSTUP_HOME=/usr/local/rustup \
+    CARGO_HOME=/usr/local/cargo \
+    PATH=/usr/local/cargo/bin:$PATH \
+    CARGO_TARGET_DIR=/build/target
+
+RUN mkdir -p "$CARGO_TARGET_DIR" \
+ && curl --proto '=https' --tlsv1.2 -LsSf https://sh.rustup.rs \
+      | sh -s -- -y \
+            --default-toolchain stable \
+            --profile default \
+            --target wasm32-unknown-unknown \
+            --target x86_64-unknown-linux-gnu \
+            --target aarch64-unknown-linux-musl \
+            --target x86_64-unknown-linux-musl \
+            --target x86_64-pc-windows-msvc \
+            --target x86_64-pc-windows-gnu \
+            --component llvm-tools \
+ && rustup default stable \
+ && cargo install cargo-xwin
+
+ENV PATH=/usr/local/bin:$PATH
+
+RUN curl --proto '=https' --tlsv1.2 -LsSf https://astral.sh/uv/install.sh \
+      | sh -s -- --verbose --no-modify-path \
+      && mv /root/.local/bin/uv /usr/local/bin/ \
+      && mv /root/.local/bin/uvx /usr/local/bin/ \
+      && uv venv --seed --system-site-packages /root/.venv
+
+
+RUN curl --proto '=https' --tlsv1.2 -LsSf https://setup.atuin.sh \
+      | sh -s -- --non-interactive
+
+RUN curl --proto '=https' --tlsv1.2 -LsSf https://get.pnpm.io/install.sh \
+      | sh \
+      && mv /root/.local/share/pnpm /usr/local/share/pnpm
+
+RUN curl --proto '=https' --tlsv1.2 -LsSf https://gh.io/copilot-install \
+      | bash
+
+RUN curl --proto '=https' --tlsv1.2 -LsSf https://claude.ai/install.sh \
+      | bash -s -- latest \
+      && mv /root/.local/share/claude /usr/local/share/claude \
+      && claude_version=$(ls /usr/local/share/claude/versions/ | sort --version-sort | tail -n 1) \
+      && ln -s "/usr/local/share/claude/versions/$claude_version" /usr/local/bin/claude
+
+RUN mkdir -p /root/.config/nvim/lua \
+ && source /root/.venv/bin/activate \
+ && pip install --upgrade pip \
+ && pip install pynvim hererocks \
+ && cpanm --notest Neovim::Ext \
+ && gem install neovim \
+ && npm install -g neovim \
+ && printf "vim.g.python3_host_prog = '%s'\n" "$(which python3)" >> /root/.config/nvim/lua/options.lua \
+ && printf "vim.g.ruby_host_prog = '%s'\n" "$(which ruby)" >> /root/.config/nvim/lua/options.lua \
+ && printf "vim.g.node_host_prog = '%s'\n" "$(which node)" >> /root/.config/nvim/lua/options.lua \
+ && printf "vim.g.perl_host_prog = '%s'\n" "$(which perl)" >> /root/.config/nvim/lua/options.lua
+
+COPY bin/colorscript /usr/local/bin/colorscript
+COPY share/shell-color-scripts /usr/local/share/shell-color-scripts
+
+COPY <<PATHS /etc/fish/conf.d/00-paths.fish
+fish_add_path /usr/local/bin
+fish_add_path /root/.atuin/bin
+fish_add_path /root/go/bin
+PATHS
+
+COPY <<RUST /etc/fish/conf.d/01-rust.fish
+set -gx RUSTUP_HOME /usr/local/share/rustup
+set -gx CARGO_HOME /usr/local/share/cargo
+source "$CARGO_HOME/env.fish"
+RUST
+
+COPY <<STARSHIP /etc/fish/conf.d/99-starship.fish
+if status is-interactive; and type -q starship
+    starship init fish | source
+end
+STARSHIP
+
+COPY <<ATUIN /etc/fish/conf.d/99-atuin.fish
+if status is-interactive
+      atuin init fish | source
+end
+ATUIN
+
+COPY <<PNPM /etc/fish/conf.d/99-pnpm.fish
+set -gx PNPM_HOME "/usr/local/share/pnpm"
+if not string match -q -- "$PNPM_HOME/bin" $PATH
+  set -gx PATH "$PNPM_HOME/bin" $PATH
+end
+PNPM
+
+COPY <<VENV /etc/fish/conf.d/99-venv.fish
+source /root/.venv/bin/activate.fish
+VENV
+
+VOLUME /usr/local/cargo/registry \
+       /build/target \
+       /root/.local/state \
+       /root/.local/share \
+       /root/.local/cache \
+       /root/.local/lib \
+       /root/.local/etc \
+       /root/.cache \
+       /root/.npm \
+       /root/go
+
+RUN usermod -s /usr/bin/fish root
+
+ENV XWIN_ACCEPT_LICENSE=1 \
+    CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUNNER=wine \
+    CARGO_TARGET_X86_64_PC_WINDOWS_GNU_RUNNER=wine \
+    SHELL=/usr/bin/fish
+
+CMD ["/usr/bin/fish", "-l"]

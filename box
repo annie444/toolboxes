@@ -1,0 +1,159 @@
+#!/usr/bin/env bash
+
+if [[ -n "$DEBUG" ]]; then
+    set -x
+fi
+
+PLATFORM="${CONTAINER_PLATFORM}"
+REGISTRY="${CONTAINER_REGISTRY:-"ghcr.io"}"
+NS="${CONTAINER_NS:-"annie444"}"
+TAG="${CONTAINER_TAG:-"latest"}"
+SUFFIX="${CONTAINER_SUFFIX:-"-toolbox"}"
+PREFIX="${CONTAINER_PREFIX:-"linux"}"
+NAME="${CONTAINER_NAME:-"$PREFIX$SUFFIX"}"
+
+if [[ -z "${PLATFORM:-}" ]]; then
+    case "$(arch)" in
+    aarch64 | arm64)
+        PLATFORM="linux/arm64"
+        ;;
+    x86_64 | amd64)
+        PLATFORM="linux/amd64"
+        ;;
+    esac
+fi
+
+ARCH="${PLATFORM##*/}"
+
+if [[ -z "${CONTAINER_EXECUTABLE:-}" ]]; then
+    if command -v podman &>/dev/null; then
+        CONTAINER_EXECUTABLE="podman"
+    elif command -v docker &>/dev/null; then
+        CONTAINER_EXECUTABLE="docker"
+    else
+        echo "No container runtime found. Please install podman or docker." >&2
+        exit 1
+    fi
+fi
+
+if ! $CONTAINER_EXECUTABLE volume exists "$NAME-$ARCH-local-state"; then
+    $CONTAINER_EXECUTABLE volume create "$NAME-$ARCH-local-state"
+fi
+if ! $CONTAINER_EXECUTABLE volume exists "$NAME-$ARCH-local-share"; then
+    $CONTAINER_EXECUTABLE volume create "$NAME-$ARCH-local-share"
+fi
+if ! $CONTAINER_EXECUTABLE volume exists "$NAME-$ARCH-local-cache"; then
+    $CONTAINER_EXECUTABLE volume create "$NAME-$ARCH-local-cache"
+fi
+if ! $CONTAINER_EXECUTABLE volume exists "$NAME-$ARCH-local-lib"; then
+    $CONTAINER_EXECUTABLE volume create "$NAME-$ARCH-local-lib"
+fi
+if ! $CONTAINER_EXECUTABLE volume exists "$NAME-$ARCH-local-etc"; then
+    $CONTAINER_EXECUTABLE volume create "$NAME-$ARCH-local-etc"
+fi
+if ! $CONTAINER_EXECUTABLE volume exists "$NAME-$ARCH-cache"; then
+    $CONTAINER_EXECUTABLE volume create "$NAME-$ARCH-cache"
+fi
+if ! $CONTAINER_EXECUTABLE volume exists "$NAME-$ARCH-cargo-registry"; then
+    $CONTAINER_EXECUTABLE volume create "$NAME-$ARCH-cargo-registry"
+fi
+if ! $CONTAINER_EXECUTABLE volume exists "$NAME-$ARCH-cargo-target"; then
+    $CONTAINER_EXECUTABLE volume create "$NAME-$ARCH-cargo-target"
+fi
+if ! $CONTAINER_EXECUTABLE volume exists "$NAME-$ARCH-go-path"; then
+    $CONTAINER_EXECUTABLE volume create "$NAME-$ARCH-go-path"
+fi
+if ! $CONTAINER_EXECUTABLE volume exists "$NAME-$ARCH-npm-cache"; then
+    $CONTAINER_EXECUTABLE volume create "$NAME-$ARCH-npm-cache"
+fi
+
+declare -a volumes=(
+    "--volume=$NAME-$ARCH-local-state:/root/.local/state"
+    "--volume=$NAME-$ARCH-local-share:/root/.local/share"
+    "--volume=$NAME-$ARCH-local-cache:/root/.local/cache"
+    "--volume=$NAME-$ARCH-local-lib:/root/.local/lib"
+    "--volume=$NAME-$ARCH-local-etc:/root/.local/etc"
+    "--volume=$NAME-$ARCH-cache:/root/.cache"
+    "--volume=$NAME-$ARCH-cargo-registry:/usr/local/cargo/registry"
+    "--volume=$NAME-$ARCH-cargo-target:/build/target"
+    "--volume=$NAME-$ARCH-go-path:/root/go"
+    "--volume=$NAME-$ARCH-npm-cache:/root/.npm"
+)
+
+declare -a mounts=(
+    "--mount=type=bind,src=$HOME/.config/atuin,dest=/root/.config/atuin,bind-propagation=rshared,relabel=shared"
+    "--mount=type=bind,src=$HOME/.config/bat,dest=/root/.config/bat,bind-propagation=rshared,relabel=shared"
+    "--mount=type=bind,src=$HOME/.config/btop,dest=/root/.config/btop,bind-propagation=rshared,relabel=shared"
+    "--mount=type=bind,src=$HOME/.config/composer,dest=/root/.config/composer,bind-propagation=rshared,relabel=shared"
+    "--mount=type=bind,src=$HOME/.config/fish,dest=/root/.config/fish,bind-propagation=rshared,relabel=shared"
+    "--mount=type=bind,src=$HOME/.config/gh,dest=/root/.config/gh,bind-propagation=rshared,relabel=shared"
+    "--mount=type=bind,src=$HOME/.config/git,dest=/root/.config/git,bind-propagation=rshared,relabel=shared"
+    "--mount=type=bind,src=$HOME/.config/github-copilot,dest=/root/.config/github-copilot,bind-propagation=rshared,relabel=shared"
+    "--mount=type=bind,src=$HOME/.config/htop,dest=/root/.config/htop,bind-propagation=rshared,relabel=shared"
+    "--mount=type=bind,src=$HOME/.config/lazygit,dest=/root/.config/lazygit,bind-propagation=rshared,relabel=shared"
+    "--mount=type=bind,src=$HOME/.config/nvim/init.lua,dest=/root/.config/nvim/init.lua,bind-propagation=rshared,relabel=shared"
+    "--mount=type=bind,src=$HOME/.config/nvim/neovim.yml,dest=/root/.config/nvim/neovim.yml,bind-propagation=rshared,relabel=shared"
+    "--mount=type=bind,src=$HOME/.config/nvim/selene.toml,dest=/root/.config/nvim/selene.toml,bind-propagation=rshared,relabel=shared"
+    "--mount=type=bind,src=$HOME/.config/nvim/lua/community.lua,dest=/root/.config/nvim/lua/community.lua,bind-propagation=rshared,relabel=shared"
+    "--mount=type=bind,src=$HOME/.config/nvim/lua/globals.lua,dest=/root/.config/nvim/lua/globals.lua,bind-propagation=rshared,relabel=shared"
+    "--mount=type=bind,src=$HOME/.config/nvim/lua/lazy_setup.lua,dest=/root/.config/nvim/lua/lazy_setup.lua,bind-propagation=rshared,relabel=shared"
+    "--mount=type=bind,src=$HOME/.config/nvim/lua/polish.lua,dest=/root/.config/nvim/lua/polish.lua,bind-propagation=rshared,relabel=shared"
+    "--mount=type=bind,src=$HOME/.config/nvim/lua/neovide,dest=/root/.config/nvim/lua/neovide,bind-propagation=rshared,relabel=shared"
+    "--mount=type=bind,src=$HOME/.config/nvim/lua/plugins,dest=/root/.config/nvim/lua/plugins,bind-propagation=rshared,relabel=shared"
+    "--mount=type=bind,src=$HOME/.config/sops,dest=/root/.config/sops,bind-propagation=rshared,relabel=shared"
+    "--mount=type=bind,src=$HOME/.config/sql-language-server,dest=/root/.config/sql-language-server,bind-propagation=rshared,relabel=shared"
+    "--mount=type=bind,src=$HOME/.config/starship.toml,dest=/root/.config/starship.toml,bind-propagation=rshared,relabel=shared"
+    "--mount=type=bind,src=$HOME/.config/thefuck,dest=/root/.config/thefuck,bind-propagation=rshared,relabel=shared"
+    "--mount=type=bind,src=$HOME/.config/todoers,dest=/root/.config/todoers,bind-propagation=rshared,relabel=shared"
+    "--mount=type=bind,src=$HOME/.config/uv,dest=/root/.config/uv,bind-propagation=rshared,relabel=shared"
+    "--mount=type=bind,src=$HOME/.claude,dest=/root/.claude,bind-propagation=rshared,relabel=shared"
+    "--mount=type=bind,src=$HOME/.claude.json,dest=/root/.claude.json,bind-propagation=rshared,relabel=shared"
+    "--mount=type=bind,src=$HOME/.claude-worktrees,dest=/root/.claude-worktrees,bind-propagation=rshared,relabel=shared"
+    "--mount=type=bind,src=$HOME/.wget-hsts,dest=/root/.wget-hsts,bind-propagation=rshared,relabel=shared"
+    "--mount=type=bind,src=$HOME/.tmux,dest=/root/.tmux,bind-propagation=rshared,relabel=shared"
+    "--mount=type=bind,src=$HOME/.tmux.conf,dest=/root/.tmux.conf,bind-propagation=rshared,relabel=shared"
+    "--mount=type=bind,src=$HOME/.ssh,dest=/root/.ssh,bind-propagation=rshared,relabel=shared"
+    "--mount=type=bind,src=$HOME/.sqlite_history,dest=/root/.sqlite_history,bind-propagation=rshared,relabel=shared"
+    "--mount=type=bind,src=$HOME/.python_history,dest=/root/.python_history,bind-propagation=rshared,relabel=shared"
+    "--mount=type=bind,src=$HOME/.psql_history,dest=/root/.psql_history,bind-propagation=rshared,relabel=shared"
+    "--mount=type=bind,src=$HOME/.iftoprc,dest=/root/.iftoprc,bind-propagation=rshared,relabel=shared"
+    "--mount=type=bind,src=$HOME/.gnupg,dest=/root/.gnupg,bind-propagation=rshared,relabel=shared"
+    "--mount=type=bind,src=$HOME/.dotfiles,dest=/root/.dotfiles,bind-propagation=rshared,relabel=shared"
+    "--mount=type=bind,src=$HOME/.copilot,dest=/root/.copilot,bind-propagation=rshared,relabel=shared"
+    "--mount=type=bind,src=$HOME/.wakatime.cfg,dest=/root/.wakatime.cfg,bind-propagation=rshared,relabel=shared"
+    "--mount=type=bind,src=$HOME/Projects,dest=/root/Projects,bind-propagation=rshared,relabel=shared"
+    "--mount=type=bind,src=$HOME/.dotfiles,dest=$HOME/.dotfiles,bind-propagation=rshared,relabel=shared"
+    "--mount=type=bind,src=$HOME/Projects,dest=$HOME/Projects,bind-propagation=rshared,relabel=shared"
+)
+
+declare -a envs=(
+    "--env=XDG_DATA_HOME=/root/.local/share"
+    "--env=XDG_STATE_HOME=/root/.local/state"
+    "--env=XDG_CONFIG_HOME=/root/.config"
+    "--env=XDG_CACHE_HOME=/root/.cache"
+    "--env=XDG_DATA_DIRS=/root/.local/share:/usr/local/share:/usr/share"
+    "--env=XDG_CONFIG_DIRS=/etc/xdg:/root/.config"
+    "--env=CARGO_TARGET_DIR=/build/target"
+)
+while IFS= read -r entry; do
+    if [[ "$entry" =~ ^(PATH|SHLVL|DISPLAY|MANPAGER|USER|LESSOPEN|HOME|LOGNAME|fish_complete_path|SSH_AUTH_SOCK|SHELL|GPG_TTY|TE?MP(DIR)?|_|.*(HOME|UNIX_SOCKET|DATA_DIR|_ROOT|CONFIG_(FILE|DIR)|PYTHON)|(PYENV|XDG_|__).*|.*EXECUTABLE.*)=.* ]]; then
+        continue
+    fi
+    envs+=("--env=${entry}")
+done < <(printenv)
+
+declare -a other=(
+    "--interactive"
+    "--user=root"
+    "--tty"
+    "--workdir=$PWD"
+    "--platform=$PLATFORM"
+    "--name=$NAME"
+    "--replace"
+    "--hostname=$NAME"
+    "--network=host"
+)
+
+$CONTAINER_EXECUTABLE run "${other[@]}" "${mounts[@]}" "${volumes[@]}" "${envs[@]}" "$REGISTRY/$NS/$NAME:$TAG" "$@"
+
+# vim: set ft=bash et ts=4 sw=4:
